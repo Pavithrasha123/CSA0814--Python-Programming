@@ -1,1 +1,126 @@
+import csv
+import re
+from pathlib import Path
 
+class InvalidRecord(Exception):
+    pass
+
+def valid_email(email):
+    if email.count("@") != 1:
+        return False
+    local, domain = email.split("@")
+    return bool(local) and bool(domain) and "." in domain and not any(ch.isspace() for ch in email)
+
+def validate(line):
+    parts = line.strip().split(",", 4)
+
+    if len(parts) != 5:
+        raise InvalidRecord("Incorrect number of fields")
+
+    reg, name, dept, email, events = map(str.strip, parts)
+
+    if not all([reg, name, dept, email, events]):
+        raise InvalidRecord("Missing required field")
+
+    if not valid_email(email):
+        raise InvalidRecord("Invalid email address")
+
+    event_list = [e.strip() for e in events.split(";")]
+
+    if not event_list or any(not e for e in event_list):
+        raise InvalidRecord("Invalid event list")
+
+    return {
+        "reg": reg,
+        "name": name,
+        "dept": dept,
+        "email": email,
+        "events": event_list
+    }
+
+def write_reports(records, event_data, errors):
+    output_dir = Path("output")
+    output_dir.mkdir(exist_ok=True)
+
+    with open(output_dir / "master_list.csv", "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["Register Number", "Name", "Department", "Email", "Events"])
+
+        for r in records:
+            writer.writerow([r["reg"], r["name"], r["dept"], r["email"], ";".join(r["events"])])
+
+    for event, students in event_data.items():
+        safe_name = re.sub(r"[^A-Za-z0-9_-]+", "_", event)
+
+        with open(output_dir / f"event_{safe_name}.txt", "w") as f:
+            for student in students:
+                f.write(f'{student["reg"]}, {student["name"]}\n')
+
+    with open(output_dir / "summary.txt", "w") as f:
+        f.write("COLLEGE FEST SUMMARY\n")
+        f.write(f"Total valid registrations: {len(records)}\n")
+        f.write(f"Total events: {len(event_data)}\n")
+
+        for event, students in event_data.items():
+            f.write(f"{event}: {len(students)} participants\n")
+
+    with open(output_dir / "error.log", "w") as f:
+        for error in errors:
+            f.write(error + "\n")
+
+def process():
+    data = {
+        "CSE": [
+            "192311001,Amrutha,CSE,amrutha@gmail.com,Music;Dance",
+            "192311002,Bhavya,CSE,bhavya@gmail.com,Quiz;Dance"
+        ],
+        "ECE": [
+            "192311001,Amrutha,ECE,amrutha@gmail.com,Music",
+            "192311003,Nethra,ECE,nethra@gmail.com,Quiz"
+        ],
+        "EEE": [
+            "192311004,Kavya,EEE,kavyaemail.com,Music",
+            "192311005,Divya,EEE,divya@gmail.com,Dance"
+        ],
+        "MECH": [
+            "192311006,Harsha,MECH,harsha@gmail.com,Quiz",
+            "192311007,MECH"
+        ]
+    }
+
+    seen = set()
+    records = []
+    event_data = {}
+    errors = []
+
+    for dept, lines in data.items():
+        for line_no, line in enumerate(lines, start=1):
+            try:
+                student = validate(line)
+
+                if student["reg"] in seen:
+                    raise InvalidRecord("Duplicate registration")
+
+                seen.add(student["reg"])
+                records.append(student)
+
+                for event in student["events"]:
+                    event_data.setdefault(event, []).append(student)
+
+            except InvalidRecord as e:
+                errors.append(f"{dept}.txt, Line {line_no}: {e}")
+
+    errors.append("Missing department file: CIVIL.txt")
+
+    write_reports(records, event_data, errors)
+
+    print("Processing completed.")
+    print("Valid registrations:", len(records))
+    print("Errors found:", len(errors))
+    print("\nERROR DETAILS:")
+
+    for error in errors:
+        print(error)
+
+if __name__ == "__main__":
+    process()
