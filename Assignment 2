@@ -1,1 +1,59 @@
+import time
+
+original_calls = 0
+
+def original_naive(n):
+    global original_calls
+    original_calls += 1
+
+    if n <= 1:
+        return 1
+
+    return original_naive(n - 1) + original_naive(n - 2)
+
+
+n = 25
+original_calls = 0
+
+start = time.perf_counter()
+original_answer = original_naive(n)
+original_time = time.perf_counter() - start
+
+print("Original answer:", original_answer)
+print("Original calls:", original_calls)
+print("Original time:", original_time)
+
+
+def redesigned_loop(n):
+    if n < 0:
+        raise ValueError("Number of steps cannot be negative")
+
+    if n <= 1:
+        return 1
+
+    previous_two = 1
+    previous_one = 1
+
+    for i in range(2, n + 1):
+        current = previous_two + previous_one
+        previous_two = previous_one
+        previous_one = current
+
+    return previous_one
+
+
+start = time.perf_counter()
+redesigned_answer = redesigned_loop(n)
+redesigned_time = time.perf_counter() - start
+
+print("Redesigned answer:", redesigned_answer)
+print("Redesigned time:", redesigned_time)
+print("Answers match:", original_answer == redesigned_answer)
+
+start = time.perf_counter()
+large_answer = redesigned_loop(1000)
+large_time = time.perf_counter() - start
+
+print("Redesigned 1000 steps:", large_answer)
+print("Execution time:", large_time)
 
