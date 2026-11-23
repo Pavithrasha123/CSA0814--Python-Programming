@@ -1,1 +1,312 @@
+import re
+import sqlite3
+import time
+from collections import Counter
 
+
+POSITIVE = {"good", "clean", "fast", "helpful", "improved"}
+NEGATIVE = {"bad", "dirty", "slow", "rude", "smoke", "broken"}
+NEGATORS = {"not", "never", "no"}
+
+STOP_WORDS = {
+    "the", "is", "a", "an", "and", "of", "in", "to",
+    "was", "are", "it", "for", "on", "with", "from",
+    "but", "this", "that", "were"
+}
+
+
+def score(text):
+    words = re.findall(r"\b[a-z]+\b", text.lower())
+    total = 0
+
+    for i, word in enumerate(words):
+        if word in POSITIVE:
+            value = 1
+        elif word in NEGATIVE:
+            value = -1
+        else:
+            value = 0
+
+        if i > 0 and words[i - 1] in NEGATORS:
+            value = -value
+
+        total += value
+
+    if total > 0:
+        return "positive"
+    elif total < 0:
+        return "negative"
+    return "neutral"
+
+
+def summarise(text, k=2, frequencies=None):
+    sentences = re.split(r"(?<=[.!?])\s+", text.strip())
+    sentences = [s for s in sentences if s]
+
+    if frequencies is None:
+        words = re.findall(r"\b[a-z]+\b", text.lower())
+        frequencies = Counter(
+            word for word in words if word not in STOP_WORDS
+        )
+
+    scored = []
+
+    for index, sentence in enumerate(sentences):
+        words = re.findall(r"\b[a-z]+\b", sentence.lower())
+        importance = sum(frequencies[word] for word in words)
+        scored.append((importance, index, sentence))
+
+    selected = sorted(scored, key=lambda x: (-x[0], x[1]))[:k]
+    selected.sort(key=lambda x: x[1])
+
+    return "\n".join(item[2] for item in selected)
+
+
+def first_k_summary(text, k=2):
+    sentences = re.split(r"(?<=[.!?])\s+", text.strip())
+    sentences = [s for s in sentences if s]
+    return "\n".join(sentences[:k])
+
+
+complaints = [
+    ("Roads are clean and the bus was fast.", "positive"),
+    ("Smoke from the factory, air is bad.", "negative"),
+    ("The staff were not helpful.", "negative"),
+    ("Not bad, service improved.", "positive"),
+    ("The park is clean and the area is good.", "positive"),
+    ("The bus service is slow and the stop is dirty.", "negative"),
+    ("The street lights are broken.", "negative"),
+    ("The workers were helpful.", "positive"),
+    ("The water supply is good today.", "positive"),
+    ("The road is not clean.", "negative"),
+    ("There is smoke near the school.", "negative"),
+    ("The repair work improved the road.", "positive"),
+    ("The driver was rude.", "negative"),
+    ("The bus was fast and clean.", "positive"),
+    ("The drainage is bad and dirty.", "negative"),
+    ("The officer was not rude.", "positive"),
+    ("The service is never good.", "negative"),
+    ("The road is good but the bus is slow.", "negative"),
+    ("The air is clean near the park.", "positive"),
+    ("The street is dirty and the lights are broken.", "negative"),
+    ("The staff are helpful and polite.", "positive"),
+    ("The bus is not slow today.", "positive"),
+    ("Smoke is making the air bad.", "negative"),
+    ("The repair has improved the service.", "positive"),
+    ("The water is dirty and the pump is broken.", "negative"),
+    ("The response was fast and helpful.", "positive"),
+    ("The road is bad near the market.", "negative"),
+    ("The area is clean but the service is slow.", "negative"),
+    ("The workers are not helpful and are rude.", "negative"),
+    ("The bus arrived fast.", "positive"),
+    ("The air quality is good.", "positive"),
+    ("The factory smoke is not good.", "negative"),
+    ("The new road is clean and improved.", "positive"),
+    ("The streetlight is broken and the road is dirty.", "negative"),
+    ("The road is clean and safe.", "positive"),
+    ("The bus service is not good.", "negative"),
+    ("The water is clean and helpful.", "positive"),
+    ("The drainage is broken near the park.", "negative"),
+    ("The workers are fast and helpful.", "positive"),
+    ("The street is dirty and the air is bad.", "negative"),
+    ("The new service is improved.", "positive"),
+    ("The driver is not rude.", "positive"),
+    ("The road is slow and dirty.", "negative"),
+    ("The park is clean and beautiful.", "positive"),
+    ("The factory smoke is bad.", "negative"),
+    ("The bus is fast and the road is clean.", "positive"),
+    ("The water supply is not clean.", "negative"),
+    ("The staff are rude and unhelpful.", "negative"),
+    ("The repair work is good and improved.", "positive"),
+    ("The street lights are not broken.", "positive")
+]
+
+
+print("TASK B4 - FINAL ENGINEERING DECISION")
+print("=" * 50)
+
+print("\n1. SENTIMENT ANALYSIS")
+
+examples = [
+    "Roads are clean and the bus was fast.",
+    "Smoke from the factory, air is bad.",
+    "The staff were not helpful.",
+    "Not bad, service improved."
+]
+
+for complaint in examples:
+    print(score(complaint), "|", complaint)
+
+
+print("\n2. TESTING ON 50 CITIZEN COMPLAINTS")
+
+correct = 0
+incorrect = 0
+
+for complaint, actual in complaints:
+    predicted = score(complaint)
+
+    if predicted == actual:
+        correct += 1
+    else:
+        incorrect += 1
+
+    print("Expected:", actual, "| Predicted:", predicted)
+
+accuracy = (correct / len(complaints)) * 100
+
+print("\nTotal complaints:", len(complaints))
+print("Correctly classified:", correct)
+print("Incorrectly classified:", incorrect)
+print("Agreement percentage:", round(accuracy, 2), "%")
+
+
+print("\n3. EXTRACTIVE TEXT SUMMARISATION")
+
+complaint_text = (
+    "The road is dirty. "
+    "Smoke is coming from the factory. "
+    "The drainage system is broken. "
+    "Immediate action is required."
+)
+
+all_words = re.findall(r"\b[a-z]+\b", complaint_text.lower())
+
+frequencies = Counter(
+    word for word in all_words if word not in STOP_WORDS
+)
+
+print("Original Complaint:")
+print(complaint_text)
+
+print("\nFrequency-Based Summary:")
+print(summarise(complaint_text, 2, frequencies))
+
+
+print("\n4. SQLITE DATABASE INDEXING")
+
+con = sqlite3.connect(":memory:")
+
+con.execute("""
+CREATE TABLE aq (
+    station TEXT,
+    day TEXT,
+    pm25 REAL
+)
+""")
+
+readings = []
+
+for i in range(50000):
+    station = "Adyar" if i % 2 == 0 else "Guindy"
+    day = f"2026-10-{(i % 30) + 1:02d}"
+    pm25 = float((i % 150) + 10)
+    readings.append((station, day, pm25))
+
+con.executemany(
+    "INSERT INTO aq VALUES (?, ?, ?)",
+    readings
+)
+
+con.commit()
+
+query = """
+SELECT station, day, AVG(pm25)
+FROM aq
+WHERE station = ?
+AND day BETWEEN ? AND ?
+GROUP BY station, day
+"""
+
+
+def measure_query():
+    start = time.perf_counter()
+
+    for i in range(100):
+        con.execute(
+            query,
+            ("Adyar", "2026-10-01", "2026-10-31")
+        ).fetchall()
+
+    end = time.perf_counter()
+    return end - start
+
+
+before = measure_query()
+
+print("Time Before Index:", round(before, 6), "seconds")
+
+con.execute("""
+CREATE INDEX idx_station_day
+ON aq(station, day)
+""")
+
+con.commit()
+
+after = measure_query()
+
+print("Time After Index:", round(after, 6), "seconds")
+
+if before > 0:
+    improvement = ((before - after) / before) * 100
+    print("Performance Improvement:", round(improvement, 2), "%")
+
+print("\nQuery Execution Plan:")
+
+plan = con.execute(
+    "EXPLAIN QUERY PLAN " + query,
+    ("Adyar", "2026-10-01", "2026-10-31")
+).fetchall()
+
+for row in plan:
+    print(row)
+
+
+print("\n5. PRODUCTION DATA CALCULATION")
+
+stations = 100
+readings_per_hour = 4
+hours_per_day = 24
+days_per_month = 30
+complaint_count = 50000
+
+daily_readings = stations * readings_per_hour * hours_per_day
+monthly_readings = daily_readings * days_per_month
+yearly_readings = monthly_readings * 12
+total_monthly_records = monthly_readings + complaint_count
+
+print("Daily PM2.5 Readings:", daily_readings)
+print("Monthly PM2.5 Readings:", monthly_readings)
+print("Yearly PM2.5 Readings:", yearly_readings)
+print("Monthly Citizen Complaints:", complaint_count)
+print("Total Monthly Records:", total_monthly_records)
+
+
+print("\n6. FIRST K SENTENCE SUMMARISATION")
+
+print("Original Complaint:")
+print(complaint_text)
+
+print("\nFirst K Summary:")
+print(first_k_summary(complaint_text, 2))
+
+
+print("\n7. SUMMARY COMPARISON")
+
+print("First K Method: Selects the first two sentences.")
+print("Frequency-Based Method: Selects sentences using word frequency.")
+print("Preferred Method: Frequency-Based Summarisation")
+
+
+print("\n8. FINAL PRODUCTION DECISION")
+
+print("Recommended Database: PostgreSQL")
+print("Data Cleaning: Python and Pandas")
+print("Data Analysis: SQL GROUP BY")
+print("Database Indexing: Composite Index on station and day")
+print("Sentiment Analysis: Trained Machine Learning Model")
+print("Text Summarisation: Frequency-Based Extractive Method")
+
+print("\nTASK B4 COMPLETED SUCCESSFULLY")
+
+con.close()
